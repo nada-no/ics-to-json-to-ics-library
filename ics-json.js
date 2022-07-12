@@ -1,16 +1,34 @@
 // let icsText = "";
 
+//get text from the clipboard
 function getClipboard() {
 	navigator.clipboard.readText().then((responseText) => {
 		if (responseText !== "") {
 			// console.log(responseText);
-            console.log(parseIcsToJSON(responseText));
+			console.log(parseIcsToJSON(responseText));
 		} else {
 			console.log("No text on the clipboard!");
 		}
 	});
 }
 
+//transform ics dates to Date timestamps
+//ics dates are YYYYMMDDTHHmmSS format
+function calenDate(icalStr) {
+	// icalStr = '20110914T184000Z'
+	var strYear = icalStr.substr(0, 4);
+	var strMonth = parseInt(icalStr.substr(4, 2), 10) - 1;
+	var strDay = icalStr.substr(6, 2);
+	var strHour = icalStr.substr(9, 2);
+	var strMin = icalStr.substr(11, 2);
+	var strSec = icalStr.substr(13, 2);
+
+	var oDate = new Date(strYear, strMonth, strDay, strHour, strMin, strSec);
+
+	return oDate.getTime();
+}
+
+//parse ics file into JSON
 function parseIcsToJSON(icsData) {
 	const NEW_LINE = /\r\n|\n|\r/;
 
@@ -23,8 +41,10 @@ function parseIcsToJSON(icsData) {
 	const SUMMARY = "SUMMARY";
 	const LOCATION = "LOCATION";
 	const ALARM = "VALARM";
+	const UID = "UID"; //then I can get this for the ID of the event in the calendar
 
 	const keyMap = {
+		[UID]: "uid",
 		[START_DATE]: "startDate",
 		[END_DATE]: "endDate",
 		[DESCRIPTION]: "description",
@@ -76,11 +96,14 @@ function parseIcsToJSON(icsData) {
 				isAlarm = false;
 				if (value === EVENT) array.push(currentObj);
 				break;
+			case UID:
+                currentObj[keyMap[UID]] = clean(value);
 			case START_DATE:
-				currentObj[keyMap[START_DATE]] = value;
+				//try to get the date value
+				currentObj[keyMap[START_DATE]] = calenDate(value); //JSON.stringify(calenDate(value));
 				break;
 			case END_DATE:
-				currentObj[keyMap[END_DATE]] = value;
+				currentObj[keyMap[END_DATE]] = calenDate(value);
 				break;
 			case DESCRIPTION:
 				if (!isAlarm) currentObj[keyMap[DESCRIPTION]] = clean(value);
@@ -94,8 +117,38 @@ function parseIcsToJSON(icsData) {
 				continue;
 		}
 	}
-	return JSON.stringify(array);
+    parseJSONToWebxdcUpdate(array);
+    //to return a json object
+	// return JSON.stringify(array);
 	// };
 
 	// export default icsToJson;
+}
+
+function parseJSONToWebxdcUpdate(JSON) {
+    // const data = JSON.parse(JSON);
+    // console.log(JSON);
+    for(const evt in JSON){
+        let event = JSON[evt];
+        // console.log(event);
+        let date = new Date(event.startDate);
+        let info = window.webxdc.selfName + " added data from ics file";
+        let color = "black";
+        window.webxdc.sendUpdate(
+            {
+                payload: {
+                    id: event.uid,
+                    day: date.getDate(),
+                    month: date.getMonth(),
+                    year: date.getFullYear(),
+                    data: event.summary,
+                    color: color,
+                    addition: true,
+                    creator: window.webxdc.selfName,
+                },
+                info,
+            },
+            info
+        );
+    }
 }
